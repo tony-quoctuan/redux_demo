@@ -854,13 +854,18 @@ You are using the `fetch` browser API to make a request to Flickr. Fetch returns
 
 So now that you have a working image gallery using React.
 
-# What is Redux?
+## What is wrong with React state
+
+Using `state` built in React components is very tempting, but when application gets more complex and lots of parts have to communicate with each other debugging it becomes really hard task. It’s difficult to see the data flow and how various components communicate.
+In React, components can easily communicate with their children by passing them props, and children can talk back by callback functions, but what if we need to notify neighbour or some faraway component?
+
+## What is Redux?
 
 - Redux is a framework that controls states in a JavaScript app. According to the official site: `Redux is a predictable state container for JavaScript apps.`
 - There are many states in an app that will change depending on time, user behavior, or a plethora of different reasons. `Thus, if we consider an app as the process to change its own state, the view a user sees is how the states are presented.`
 - We can use Redux to manage any kind of application state, providing we stick to the following guidelines:
-    1.Our state is kept in a single store
-    3. Changes come from actions not mutations
+    + Our state is kept in a single store.
+    + Changes come from actions not mutations
 For example, in a TODO list app, when we create a new todo item, we actually changed the state of an app from one without that TODO item to one with the TODO item. In addition, because the app’s state has changed, and the view is how a state is presented, we will see the new TODO item in our view.
 - At the core of a Redux store is a function that takes the current application state and an action and combines them to create a new application state. We call this function a reducer.
 
@@ -890,8 +895,198 @@ Actions are cool, but they don’t make much sense by themselves. This is where 
 
 ## How does Redux work?
 
-1. Redux creates a store/state.
-2. Redux then creates reducers (listeners) that listen for actions (events)
-3. React components can dispatch (publish) these events via store.dispatch
-4. Redux then reduced (recalculated) state based off the dispatched action and returns a new copy of state. (State is immutable, it never changes, so we end up a history of state over time)
-5. Once state has been reduced, React is free to re-render based off the new state.
+Redux is astonishingly simple. It uses a function called a reducer (a name derived from the JavaScript reduce method) that takes two parameters: An action, and a next state.
+
+The reducer has access to the current (soon to be previous) state, applies the given action to that state, and returns the desired next state.
+
+Reducers are designed to be pure functions; meaning, they produce no side effects. If you pass the same input values to a reducer 100 times, you will get the exact same output value 100 times. Nothing weird happens. They are completely predictable. As someone with a prominent "NO SURPRISES" sticky note on my monitor, this is a wonderful idea to contemplate.
+
+Reducers do not store state, and they do NOT mutate state. They are passed state, and they return state. This is what reducers look like in action.
+
+Note that the reducer is passed only the slice of state that requires updating and it returns a new state after each action is dispatched.
+
+## Demo Redux
+
+**The reducer function is the brain of Redux**. When an action is dispatched by the application, the reducer receives the action and creates the piece of application state that the reducer owns. Since **reducers are pure functions**, they can be composed together to create the complete state of the application. Let’s create a simple reducer in the `src` folder:
+
+**reducer.js**
+
+We’ve created a `defaultState` object that has an empty array as its `images` property. We will set the `state` to default in the `images` function parameters. The reducer needs to return the current state of the application. This is important! Right now, we aren’t making any changes, so we can just return the state. The reducer should always return an object representing the state.
+
+```
+const defaultState = {
+     images: [
+       "https://farm2.staticflickr.com/1553/25266806624_fdd55cecbc.jpg",
+       "https://farm2.staticflickr.com/1581/25283151224_50f8da511e.jpg",
+       "https://farm2.staticflickr.com/1653/25265109363_f204ea7b54.jpg",
+       "https://farm2.staticflickr.com/1571/25911417225_a74c8041b0.jpg",
+       "https://farm2.staticflickr.com/1450/25888412766_44745cbca3.jpg"
+     ],
+     selectedImage: "https://farm2.staticflickr.com/1553/25266806624_fdd55cecbc.jpg"
+   }
+   export default function images(state = defaultState, action) {
+     switch(action.type) {
+       case 'IMAGE_SELECTED':
+         return {...state, selectedImage: action.image};
+       default:
+         return state;
+     }
+   }
+```
+A reducer function is a function that takes two arguments.
+
++ `state` – this is the data that represents the state of the application. The reducer function will use this state to construct the new state. If no state has changed as result of the action, the reducer will simply return the state input.
++ `action` – the event that has triggered the reducer. Actions are dispatched by the store, and handled by reducers. The action is required to have a type property that the reducer uses to apply changes to the new application state.
+
+For right now, the `images` reducer will log to the console to prove that it is connected and ready for work. To use the reducer we need to configure redux in `main.js`:
+
+**main.js**
+
+```
+import "babel-polyfill"
+
+import React from 'react'
+import ReactDOM from 'react-dom'
+import Gallery from './components/Gallery'
+import { createStore } from 'redux'
+import reducer from './reducer'
+const store = createStore(reducer);
+import {Provider} from 'react-redux';
+
+ReactDOM.render(
+  <Provider store={store}>
+    <Gallery />
+  </Provider>,
+  document.getElementById('root')
+);
+```
+We are going to import the `createStore` function from the Redux library. `createStore` is used to create the Redux store. For the most part, we don’t interact directly with the store, it is something that Redux manages for us behind the scenes.
+
+We also need to import the reducer function that we’ve just created so that it can be delivered to the store.
+
+We will use `createStore(reducer)` to configure the store with our application’s reducer. This example only has a single reducer, but `createStore` can take multiple reducers arguments. More on that a bit later!
+
+Finally we import the higher-order `Provider` component from `react-Redux`. This will wrap our  Gallery  so that we can make easy use of `Redux`. We need to pass the store we just created to the `Provider` so that it can use it for us. You could use Redux without `Provider`, and in fact, React isn’t required to use Redux at all! That’s wonderful, but we are going to use `Provider` because it is very convenient.
+
+Note: All reducers `receive` all actions that are dispatched in the application. In this case we are seeing an action that Redux itself dispatches.
+
+**Connecting the gallery component**
+
+With Redux, we will use the concept of “connected” and “un-connected” components. A connected component is wired into the store, and coordinates and controls action events and the store. Usually a connected component will have children that are “pure components” that take data as input, and render when that data is updated. These children are unconnected components.
+
+react-redux provides a convenient wrapper for React components that does most of the heavy lifting required to connect a React component to a Redux store. We will add that to Gallery and make it our primary connected component:
+
+```
+import React, {Component} from 'react'
+import {connect} from 'react-redux';
+import {bindActionCreators} from 'redux';
+import  * as GalleryActions from './../actions.js';
+
+// const flickrImages = [
+//   "https://farm2.staticflickr.com/1553/25266806624_fdd55cecbc.jpg",
+//   "https://farm2.staticflickr.com/1581/25283151224_50f8da511e.jpg",
+//   "https://farm2.staticflickr.com/1653/25265109363_f204ea7b54.jpg",
+//   "https://farm2.staticflickr.com/1571/25911417225_a74c8041b0.jpg",
+//   "https://farm2.staticflickr.com/1450/25888412766_44745cbca3.jpg"
+// ];
+
+export class Gallery extends Component {
+  constructor(props) {
+    super(props);
+    // this.state = {
+    //   images: [],
+    //   selectedImage: null
+    // }
+  }
+  handleThumbClick(selectedImage) {
+    this.setState({
+      selectedImage
+    })
+  }
+  // componentDidMount() {
+  //   const API_KEY = '64de6b3bfce0fdff964ed9f22608156c';
+  //   const API_ENDPOINT = `https://api.flickr.com/services/rest/?method=flickr.interestingness.getList&api_key=${API_KEY}&format=json&nojsoncallback=1&per_page=5`;
+  //   fetch(API_ENDPOINT).then((response) => {
+  //     return response.json().then((json) => {
+  //       const images = json.photos.photo.map(({farm, server, id, secret}) => {
+  //         return `https://farm${farm}.staticflickr.com/${server}/${id}_${secret}.jpg`
+  //       });
+  //       let numberRandom = Math.floor((Math.random() * 5));
+  //       this.setState({images, selectedImage: images[numberRandom]});
+  //     })
+  //   })
+  // }
+  render() {
+    const {images, selectedImage, selectImage} = this.props;
+    return (
+      <div className="image-gallery">
+        <div className="gallery-image">
+          <div>
+            <img src={selectedImage} />
+          </div>
+        </div>
+        <div className="image-scroller">
+          {images.map((image, index) => (
+            // <div key={index} onClick={this.handleThumbClick.bind(this, image)}>
+            <div key={index} onClick={() => selectImage(image)}>
+              <img src={image}/>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+}
+function mapStateToProps(state) {
+  return {
+    images: state.images,
+    selectedImage: state.selectedImage
+  }
+}
+
+function mapActionCreatorsToProps(dispatch) {
+  return bindActionCreators(GalleryActions, dispatch);
+}
+export default connect(mapStateToProps, mapActionCreatorsToProps)(Gallery)
+```
+Importing the `connect` function from react-redux lets us export `Gallery` by wrapping it in the connect component. Notice that `connect()(Gallery)` puts Gallery in a second set of parentheses. This is because `connect()` returns a function that expects a React component as an argument. The call to `connect()` configures that function. Soon we’ll pass in arguments to connect to configure it for our applications specific actions and `state` structure.
+We are also exporting the connect call as the default for this module.
+ 
+If you look towards the bottom of `Gallery` you will notice that we created a function called `mapStateToProps` that takes a state argument and returns an object that puts `state.images` into a property called `images. mapStateToProps` is then passed as an argument to `connect`: 
+
+As the name suggests `mapStateToProps` is a function that takes the current state, and assigns it to properties of the component. 
+We’ve added a `mapActionCreatorsToProps` function that takes the dispatch function as an argument.
+
+**Updating the state**
+
+We’re going to configure the reducer to listen for an `IMAGE_SELECTED` action, and update the state with the action’s payload.
+
+In the `Gallery`, we will use the `dispatch` function in the component props by calling it inside of the body of the `onClick` handler function. For now we are just writing it inline for convenience, but once we make that change, we can now click a thumbnail, and it will update the selected image via the reducer!
+Using dispatch can be convenient way to quickly create generic actions, but soon we will want to make reusable actions that are well named. To do this, we will make use of “action creators”.
+
+**Action Creators**
+
+- Action creators are functions that return configured action objects. We will add our first action creator to an new file called `actions.js`
+
+**actions.js**
+
+```
+export const IMAGE_SELECTED = 'IMAGE_SELECTED';
+
+export function selectImage(image) {
+  return {
+    type: IMAGE_SELECTED,
+    image
+  }
+}
+```
+This could now be imported directly into any file that needed to create a `selectImage` action! `selectImage` is a pure function that only returns data. It takes an image as an argument, and adds that to the action object it creates and returns.
+
+This isn’t much nicer than just using dispatch though.
+
+To review, we’ve done several things:
+- created a reducer that contains the initial (default) state of our application and listens for actions
+- created a store that consumes the reducer and provides a dispatcher that we can use to dispatch actions
+- connected our Gallery component to the store
+- mapped the store’s state to props that are passed to the Gallery
+- mapped an action creator function so that the Gallery can simply call `selectImage(image)' and the application state will update.
